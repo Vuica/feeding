@@ -14,7 +14,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         // ====================================================================
-        // PARENT PORTAL (v22 - Quick Unit Toggles)
+        // PARENT PORTAL (v23 - Fixed Form Values)
         // ====================================================================
 
         // PLACEHOLDERS - Replace if using manually, otherwise handled by GitHub Actions
@@ -334,6 +334,7 @@
                 amount = document.querySelector('input[name="amountScore"]:checked')?.value || '';
             } else if (currentUnitMode === 'g') {
                 amount = document.getElementById('inputAmountText')?.value || '';
+                unit = 'grams/ml'; // FIXED: Map 'g' button to 'grams/ml' string for Form
             } else if (currentUnitMode === 'other') {
                 // Get unit from dropdown
                 unit = document.getElementById('selectOtherUnit').value;
@@ -498,7 +499,6 @@
                 <div class="w-1/2 flex flex-col items-center overflow-y-auto no-scrollbar py-20" id="pickerHours"></div>
                 <div class="w-[1px] bg-gray-200 my-4"></div>
                 <div class="w-1/2 flex flex-col items-center overflow-y-auto no-scrollbar py-20" id="pickerMinutes"></div>
-                <div class="absolute inset-x-0 top-1/2 -translate-y-1/2 h-12 bg-indigo-50/30 border-y border-indigo-100 pointer-events-none"></div>
             </div>
         </div>
     </div>
@@ -568,8 +568,8 @@
                     <div id="otherUnitContainer" class="hidden mb-4 animate-slide-down">
                         <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Specific Unit</label>
                         <select id="selectOtherUnit" class="w-full p-3 bg-white border border-gray-300 rounded-lg text-gray-700 font-medium">
-                            <option value="tsp">Teaspoons</option>
-                            <option value="tbsp">Tablespoons</option>
+                            <option value="teaspoon">Teaspoons</option>
+                            <option value="spoon">Spoon</option>
                             <option value="cup">Cup</option>
                             <option value="pieces">Pieces</option>
                             <option value="ml">ml</option>
