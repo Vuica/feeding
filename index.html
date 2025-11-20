@@ -14,10 +14,10 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         // ====================================================================
-        // PARENT PORTAL (v23 - Fixed Form Values)
+        // PARENT PORTAL (v24 - Smart Error Handling)
         // ====================================================================
 
-        // PLACEHOLDERS - Replace if using manually, otherwise handled by GitHub Actions
+        // PLACEHOLDERS - Replace if using manually
         const FORM_ACTION_URL = "__FORM_ACTION_URL__";
         const SHEET_ID = "__SHEET_ID__";
         
@@ -42,7 +42,7 @@
         let remoteFetchComplete = false;
         let tempHour = "12";
         let tempMinute = "00";
-        let currentUnitMode = "score"; // 'score', 'g', or 'other'
+        let currentUnitMode = "score"; 
 
         window.onload = function() {
             setupSmartDefaults();
@@ -55,43 +55,31 @@
         };
 
         // --- Unit Toggle Logic ---
-
         function setUnitMode(mode) {
             currentUnitMode = mode;
-            
-            // Update Buttons UI
             const btns = {
                 'score': document.getElementById('btn-mode-score'),
                 'g': document.getElementById('btn-mode-g'),
                 'other': document.getElementById('btn-mode-other')
             };
-
-            // Reset all
             Object.values(btns).forEach(btn => {
                 btn.className = "flex-1 py-3 rounded-lg text-sm font-medium text-gray-500 hover:bg-white hover:shadow-sm transition";
             });
-
-            // Activate selected
             if(btns[mode]) {
                 btns[mode].className = "flex-1 py-3 rounded-lg text-sm font-bold shadow bg-white text-indigo-600 transition transform scale-105";
             }
-
-            // Show/Hide Dropdown for "Other"
             const otherContainer = document.getElementById('otherUnitContainer');
             if (mode === 'other') {
                 otherContainer.classList.remove('hidden');
             } else {
                 otherContainer.classList.add('hidden');
             }
-
             renderAmountInput();
         }
 
         function renderAmountInput() {
             const container = document.getElementById('amountContainer');
-            
             if (currentUnitMode === 'score') {
-                // Show 0-5 Buttons
                 container.innerHTML = `
                     <div class="flex justify-between gap-1">
                         ${[0,1,2,3,4,5].map(num => `
@@ -102,14 +90,12 @@
                         `).join('')}
                     </div>`;
             } else {
-                // Show Number Input (for Grams or Other)
                 const placeholder = currentUnitMode === 'g' ? "e.g. 50" : "e.g. 1/2";
                 container.innerHTML = `<input type="number" inputmode="decimal" id="inputAmountText" placeholder="${placeholder}" class="w-full p-3 border border-gray-300 rounded-lg text-lg focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none">`;
             }
         }
 
         // --- Fixed Time Picker ---
-
         function openTimeModal() {
             const current = document.getElementById('timeDisplay').innerText.split(':');
             if (current.length === 2) {
@@ -117,10 +103,8 @@
                 tempMinute = current[1];
             }
             renderTimePicker();
-            
             document.getElementById('timeModal').classList.remove('hidden');
             document.body.style.overflow = 'hidden';
-            
             setTimeout(() => {
                 const hEl = document.getElementById(`h-${tempHour}`);
                 const mEl = document.getElementById(`m-${tempMinute}`);
@@ -320,13 +304,23 @@
             renderSuggestions(name); 
         }
 
-        function submitLog() {
+        // --- Error Handling UI ---
+        function closeErrorModal() {
+            document.getElementById('errorModal').classList.add('hidden');
+        }
+        function copyErrorUrl() {
+            const input = document.getElementById('errorUrl');
+            input.select();
+            document.execCommand('copy');
+            alert("Link copied! Open it in your browser.");
+        }
+
+        async function submitLog() {
             const food = document.getElementById('inputFood').value.trim().toLowerCase();
             const enjoyment = document.querySelector('input[name="enjoyment"]:checked')?.value || '3';
             const date = document.getElementById('inputDate').value;
             const time = document.getElementById('timeDisplay').innerText;
             
-            // DETERMINE UNIT & AMOUNT
             let unit = currentUnitMode;
             let amount = '';
 
@@ -334,9 +328,8 @@
                 amount = document.querySelector('input[name="amountScore"]:checked')?.value || '';
             } else if (currentUnitMode === 'g') {
                 amount = document.getElementById('inputAmountText')?.value || '';
-                unit = 'grams/ml'; // FIXED: Map 'g' button to 'grams/ml' string for Form
+                unit = 'grams/ml'; 
             } else if (currentUnitMode === 'other') {
-                // Get unit from dropdown
                 unit = document.getElementById('selectOtherUnit').value;
                 amount = document.getElementById('inputAmountText')?.value || '';
             }
@@ -345,43 +338,45 @@
 
             saveToLocal(food);
 
-            const form = document.createElement('form');
-            form.action = FORM_ACTION_URL;
-            form.method = 'POST';
-            form.target = 'hidden_iframe';
-            form.style.display = 'none';
+            // Construct FormData
+            const params = new URLSearchParams();
+            params.append(MAPPING.food, food);
+            params.append(MAPPING.amount, amount);
+            params.append(MAPPING.unit, unit);
+            params.append(MAPPING.enjoyment, enjoyment);
+            params.append(MAPPING.date, date);
+            params.append(MAPPING.time, time);
 
-            const addField = (name, val) => {
-                const input = document.createElement('input');
-                input.type = 'hidden';
-                input.name = name;
-                input.value = val;
-                form.appendChild(input);
-            };
+            try {
+                // Use fetch to detect network failure
+                // mode: 'no-cors' returns opaque response so we can't see 200 vs 400, 
+                // but we CAN see Network Errors (offline/DNS) which throw catch.
+                await fetch(FORM_ACTION_URL, {
+                    method: 'POST',
+                    mode: 'no-cors',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: params
+                });
 
-            addField(MAPPING.food, food);
-            addField(MAPPING.amount, amount);
-            addField(MAPPING.unit, unit);
-            addField(MAPPING.enjoyment, enjoyment);
-            addField(MAPPING.date, date);
-            addField(MAPPING.time, time);
+                // Assuming success if no network error
+                document.getElementById('successMessage').classList.remove('hidden');
+                setTimeout(() => {
+                    document.getElementById('successMessage').classList.add('hidden');
+                    document.getElementById('inputFood').value = '';
+                    if(document.getElementById('inputAmountText')) document.getElementById('inputAmountText').value = '';
+                    setupSmartDefaults(); 
+                    renderSuggestions(); 
+                }, 2000);
 
-            document.body.appendChild(form);
-            form.submit();
-            
-            document.getElementById('successMessage').classList.remove('hidden');
-            setTimeout(() => {
-                document.getElementById('successMessage').classList.add('hidden');
-                document.getElementById('inputFood').value = '';
+            } catch (error) {
+                console.error("Submission failed", error);
+                // Construct Fallback URL (viewform pre-filled)
+                const viewFormBase = FORM_ACTION_URL.replace('/formResponse', '/viewform');
+                const finalUrl = `${viewFormBase}?usp=pp_url&${params.toString()}`;
                 
-                // Reset amount input but keep mode? Or reset to Score? 
-                // Let's reset amount input only for now
-                if(document.getElementById('inputAmountText')) document.getElementById('inputAmountText').value = '';
-                
-                setupSmartDefaults(); 
-                renderSuggestions(); 
-            }, 2000);
-            setTimeout(() => document.body.removeChild(form), 1000);
+                document.getElementById('errorUrl').value = finalUrl;
+                document.getElementById('errorModal').classList.remove('hidden');
+            }
         }
 
         function setupSmartDefaults() {
@@ -393,7 +388,6 @@
             const mm = String(minutes).padStart(2, '0');
             document.getElementById('timeDisplay').innerText = `${hh}:${mm}`;
 
-            // Default to Score Mode
             setUnitMode("score");
         }
 
@@ -428,14 +422,6 @@
         #inputFood { text-transform: lowercase; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-        
-        @keyframes slide-up {
-            from { transform: translateY(100%); }
-            to { transform: translateY(0); }
-        }
-        .animate-slide-up {
-            animation: slide-up 0.3s ease-out;
-        }
     </style>
 </head>
 <body class="h-screen overflow-hidden flex flex-col bg-white">
@@ -445,6 +431,24 @@
         <div class="bg-green-100 text-green-800 px-6 py-4 rounded-xl shadow-lg flex items-center transform scale-110">
             <span class="text-3xl mr-3">✅</span>
             <span class="font-bold text-lg">Saved!</span>
+        </div>
+    </div>
+
+    <!-- ERROR MODAL -->
+    <div id="errorModal" class="hidden fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 animate-slide-up">
+            <div class="flex items-center space-x-3 mb-4 text-red-600">
+                <span class="text-2xl">⚠️</span>
+                <h2 class="text-lg font-bold">Connection Failed</h2>
+            </div>
+            <p class="text-gray-600 text-sm mb-4">
+                We couldn't save your entry automatically. Copy this link to submit it manually or try again later.
+            </p>
+            <div class="flex space-x-2 mb-6">
+                <input id="errorUrl" readonly class="flex-1 p-3 border border-gray-300 rounded-lg text-xs text-gray-500 bg-gray-50 font-mono focus:outline-none" onclick="this.select()">
+                <button onclick="copyErrorUrl()" class="bg-gray-100 text-gray-700 px-4 rounded-lg font-bold hover:bg-gray-200 border border-gray-300 transition">Copy</button>
+            </div>
+            <button onclick="closeErrorModal()" class="w-full py-3 bg-red-50 text-red-700 font-bold rounded-lg hover:bg-red-100 transition">Close</button>
         </div>
     </div>
 
@@ -462,8 +466,6 @@
                     <input type="number" id="settingSuggestionCount" class="w-full p-3 border border-gray-300 rounded-lg focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none" min="1" max="50" onchange="updateSuggestionSetting(this.value)">
                 </div>
             </div>
-            
-            <!-- ACTIONS -->
             <div class="space-y-4">
                 <div>
                     <h3 class="text-xs font-bold text-gray-400 uppercase mb-2 tracking-wide">Data Source</h3>
@@ -526,8 +528,6 @@
     <div class="flex-1 relative bg-gray-100 overflow-hidden">
         <div id="formContainer" class="w-full h-full overflow-y-auto p-4 pb-20">
             <div class="max-w-lg mx-auto bg-white rounded-xl shadow-sm p-6 space-y-6">
-                
-                <!-- Date & Time -->
                 <div class="flex space-x-4">
                     <div class="w-1/2">
                         <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Date</label>
@@ -540,22 +540,16 @@
                              id="timeDisplay">12:00</div>
                     </div>
                 </div>
-
-                <!-- Suggestions -->
                 <div class="bg-indigo-50/50 p-3 rounded-lg border border-indigo-100">
                     <p class="text-xs font-bold text-indigo-400 uppercase mb-2">Least Recently Eaten</p>
                     <div id="suggestionChips" class="flex flex-wrap"></div>
                 </div>
-
-                <!-- Food -->
                 <div>
                     <label class="block text-sm font-bold text-gray-800 mb-1">Food Item</label>
                     <input type="text" id="inputFood" placeholder="e.g. avocado" class="w-full p-4 border border-gray-300 rounded-xl text-lg focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none">
                 </div>
-
-                <!-- QUICK UNIT TOGGLE -->
                 <div>
-                    <label class="block text-sm font-bold text-gray-800 mb-2">Amount Consumed</label>
+                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Unit Type</label>
                     
                     <!-- Toggle Bar -->
                     <div class="bg-gray-100 p-1 rounded-xl flex space-x-1 mb-4">
@@ -576,12 +570,11 @@
                             <option value="oz">oz</option>
                         </select>
                     </div>
-
-                    <!-- Input Area (Dynamic) -->
+                </div>
+                <div>
+                    <label class="block text-sm font-bold text-gray-800 mb-2">Amount Consumed</label>
                     <div id="amountContainer"></div>
                 </div>
-
-                <!-- Enjoyment -->
                 <div>
                     <label class="block text-sm font-bold text-gray-800 mb-2">Enjoyment</label>
                     <div class="flex justify-between gap-1">
@@ -598,6 +591,7 @@
         </div>
         <div id="sheetContainer" class="w-full h-full hidden"><iframe id="sheetFrame" class="w-full h-full border-none bg-white"></iframe></div>
     </div>
+    <!-- Hidden iframe not needed for fetch submission, but kept just in case of revert -->
     <iframe name="hidden_iframe" id="hidden_iframe" style="display:none;"></iframe>
 </body>
 </html>
